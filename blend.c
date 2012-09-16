@@ -1,6 +1,13 @@
-#include <inttypes.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include "bitmap.h"
+
+/*
+ * http://www.simplefilter.de/en/basics/mixmods.html
+ * http://blog.deepskycolors.com/archivo/2010/04/21/formulas-for-Photoshop-blending-modes.html
+ * http://www.pegtop.net/delphi/articles/blendmodes/
+ * http://en.wikipedia.org/wiki/Blend_modes
+ */
 
 void
 blend_mode(image_t *dest, image_t *source, uint8_t (*pt2blend)(uint8_t, uint8_t))
@@ -99,4 +106,21 @@ color_dodge(uint8_t bottom, uint8_t top)
     if (top == 255 || bottom/(255-top) > 255)
         return 255;
     return bottom/(255-top);
+}
+
+uint8_t
+color_burn(uint8_t bottom, uint8_t top)
+{
+    if (top == 0 || (255-bottom)/top > 255)
+        return 0;
+    return 255 - (255-bottom)/top;
+}
+
+uint8_t
+soft_light(uint8_t bottom, uint8_t top)
+{
+    if (top < 128)
+        return multiply(bottom, top + 128);
+    else
+        return 255 - multiply(255 - bottom, 255 - (top - 128));
 }

@@ -15,5 +15,7 @@ uint8_t difference(uint8_t bottom, uint8_t top);
 uint8_t darken_only(uint8_t bottom, uint8_t top);
 uint8_t lighten_only(uint8_t bottom, uint8_t top);
 uint8_t color_dodge(uint8_t bottom, uint8_t top);
+uint8_t color_burn(uint8_t bottom, uint8_t top);
+uint8_t soft_light(uint8_t bottom, uint8_t top);
 
 #endif

@@ -5,8 +5,10 @@
 #include "bitmap.h"
 #include "blend.h"
 
-#define INPUT "original.bmp"
-#define OUTPUT "output.bmp"
+#define DEBUG printf
+
+#define INPUT "lenna.bmp"
+#define OUTPUT "Lenna.bmp"
 
 static void
 init_image(image_t **image, uint32_t width, uint32_t height)
@@ -323,7 +325,7 @@ gaussian_blur(image_t *img)
     //const float gauss[] = { 0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006 };
     const float gauss[] = { 0.0089, 0.0123, 0.0165, 0.0215, 0.0273, 0.0336, 0.0403, 0.0469, 0.0532, 0.0586, 0.0628, 0.0655, 0.0664, 0.0655, 0.0628, 0.0586, 0.0532, 0.0469, 0.0403, 0.0336, 0.0273, 0.0215, 0.0165, 0.0123, 0.0089 };
     size_t len = sizeof(gauss)/sizeof(float);
-    size_t i, j, k;
+    size_t i, j, k, offset;
     pixel_24bit_t sum;
     image_t *tmp;
 
@@ -331,14 +333,22 @@ gaussian_blur(image_t *img)
 
     for (i = 0; i < img->height; ++i)
     {
-        for (j = 0; j < img->width - len; ++j)
+        for (j = 0; j < img->width; ++j)
         {
             sum.red = sum.blue = sum.green = 0;
+            /* Only advance one pixel every second cycle
+             * if we are near the borders: limitation
+             * of gaussian blur. */
+            if (j < len)
+                offset = -(int)j/2;
+            if (j > img->width - len)
+                offset = (int)(-j+img->width-2*len)/2;
+
             for (k = 0; k < len; ++k)
             {
-                sum.red += gauss[k]*img->matrix[i][j+k].red;
-                sum.blue += gauss[k]*img->matrix[i][j+k].blue;
-                sum.green += gauss[k]*img->matrix[i][j+k].green;
+                sum.red += gauss[k]*img->matrix[i][j+k+offset].red;
+                sum.blue += gauss[k]*img->matrix[i][j+k+offset].blue;
+                sum.green += gauss[k]*img->matrix[i][j+k+offset].green;
             }
             tmp->matrix[i][j].red = sum.red;
             tmp->matrix[i][j].green = sum.green;
@@ -346,27 +356,31 @@ gaussian_blur(image_t *img)
         }
     }
     for (i = 0; i < img->height; ++i)
-        for (j = 0; j < img->width-len; ++j)
-            img->matrix[i][j+12] = tmp->matrix[i][j];
+        for (j = 0; j < img->width; ++j)
+            img->matrix[i][j] = tmp->matrix[i][j];
     for (i = 0; i < img->width; ++i)
     {
-        for (j = 0; j < img->height - len; ++j)
+        for (j = 0; j < img->height; ++j)
         {
+            if (j < len)
+                offset = -(int)j/2;
+            if (j > img->height - len)
+                offset = (int)(-j+img->height-2*len)/2;
             sum.red = sum.blue = sum.green = 0;
             for (k = 0; k < len; ++k)
             {
-                sum.red += gauss[k]*img->matrix[j+k][i].red;
-                sum.blue += gauss[k]*img->matrix[j+k][i].blue;
-                sum.green += gauss[k]*img->matrix[j+k][i].green;
+                sum.red += gauss[k]*img->matrix[j+k+offset][i].red;
+                sum.blue += gauss[k]*img->matrix[j+k+offset][i].blue;
+                sum.green += gauss[k]*img->matrix[j+k+offset][i].green;
             }
             tmp->matrix[j][i].red = sum.red;
             tmp->matrix[j][i].green = sum.green;
             tmp->matrix[j][i].blue = sum.blue;
         }
     }
-    for (i = 0; i < img->height-len; ++i)
+    for (i = 0; i < img->height; ++i)
         for (j = 0; j < img->width; ++j)
-            img->matrix[i+12][j] = tmp->matrix[i][j];
+            img->matrix[i][j] = tmp->matrix[i][j];
 
     free_image(&tmp);
 }
@@ -417,10 +431,10 @@ main()
     read_data(infile, &header, &dib, &layer1);
 
     duplicate_layer(&layer2, layer1);
-    gaussian_blur(layer2);
+    gaussian_blur(layer1);
     //filter(layer2, pixel_bw);
-    blend_mode(layer2, layer1, color_dodge);
-    combine(layer1, layer2, 0.6);
+    //blend_mode(layer2, layer1, soft_light);
+    //combine(layer1, layer2, 0.6);
 
     write_data(outfile, &header, &dib, &layer1);
 
