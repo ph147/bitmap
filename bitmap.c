@@ -4,7 +4,7 @@
 #include <math.h>
 #include "bitmap.h"
 
-#define INPUT "landscape.bmp"
+#define INPUT "test.bmp"
 #define OUTPUT "output.bmp"
 
 static void
@@ -32,7 +32,7 @@ free_image(image_t **image)
 }
 
 static void
-read_headers(FILE *in, FILE *out, file_header_t *header, dib_header_t *dib)
+read_headers(FILE *in, file_header_t *header, dib_header_t *dib)
 {
     fread(header, sizeof(*header), 1, in);
     fread(dib, sizeof(*dib), 1, in);
@@ -46,8 +46,6 @@ read_headers(FILE *in, FILE *out, file_header_t *header, dib_header_t *dib)
         fprintf(stderr, "Unsupported depth.\n");
         exit(1);
     }
-    fwrite(header, sizeof(*header), 1, out);
-    fwrite(dib, sizeof(*dib), 1, out);
 }
 
 static void
@@ -262,7 +260,14 @@ read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img)
 }
 
 static void
-write_pixels(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
+read_data(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img)
+{
+    read_headers(in, header, dib);
+    read_pixels(in, header, dib, img);
+}
+
+static void
+write_data(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
 {
     size_t col, row;
     int width = dib->width;
@@ -271,6 +276,8 @@ write_pixels(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
     size_t rem;
     pixel_24bit_t pixel;
 
+    fwrite(header, sizeof(*header), 1, out);
+    fwrite(dib, sizeof(*dib), 1, out);
     fseek(out, header->offset, SEEK_SET);
 
     for (row = 0; row < height; ++row)
@@ -280,6 +287,19 @@ write_pixels(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
         rem = (width*size) % 4;
         if (rem)
             fwrite(&((*img)->matrix[row][col]), 4-rem, 1, out);
+    }
+}
+
+static void
+filter(image_t *img, void (*pt2filter)(pixel_24bit_t *))
+{
+    size_t i, j;
+    for (i = 0; i < img->height; ++i)
+    {
+        for (j = 0; j < img->width; ++j)
+        {
+            pt2filter(&(img->matrix[i][j]));
+        }
     }
 }
 
@@ -409,13 +429,14 @@ main()
     image_t *layer1;
     image_t *layer2;
 
-    read_headers(infile, outfile, &header, &dib);
-    read_pixels(infile, &header, &dib, &layer1);
+    read_data(infile, &header, &dib, &layer1);
 
     duplicate_layer(&layer2, layer1);
     gaussian_blur(layer2);
-    overlay(layer1, layer2, 0.66);
-    write_pixels(outfile, &header, &dib, &layer1);
+    overlay(layer1, layer2, 0.5);
+    filter(layer1, pixel_red);
+
+    write_data(outfile, &header, &dib, &layer1);
 
     free_image(&layer1);
     free_image(&layer2);

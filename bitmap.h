@@ -45,7 +45,9 @@ typedef struct
 
 static void init_image(image_t **image, uint32_t width, uint32_t height);
 static void free_image(image_t **image);
-static void read_headers(FILE *in, FILE *out, file_header_t *header, dib_header_t *dib);
+static void read_data(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img);
+static void read_headers(FILE *in, file_header_t *header, dib_header_t *dib);
+static void read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img);
 static void print_pixel(pixel_24bit_t *pixel);
 static void pixel_invert(pixel_24bit_t *pixel);
 static void pixel_bw(pixel_24bit_t *pixel);
@@ -55,8 +57,8 @@ static void pixel_2001(pixel_24bit_t *pixel);
 static hsl_t rgb_to_hsl(pixel_24bit_t *pixel);
 static pixel_24bit_t hsl_to_rgb(hsl_t *hsl);
 static void pixel_test(pixel_24bit_t *pixel);
-static void read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img);
-static void write_pixels(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img);
+static void filter(image_t *img, void (*pt2filter)(pixel_24bit_t *t));
+static void write_data(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img);
 static void edit_pixels(image_t *img);
 static void gaussian_blur(image_t *img);
 static void duplicate_layer(image_t **dest, image_t *source);
