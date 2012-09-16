@@ -9,6 +9,9 @@
  * http://en.wikipedia.org/wiki/Blend_modes
  */
 
+#define MAX(a,b) (a)>(b)?(a):(b)
+#define MIN(a,b) (a)<(b)?(a):(b)
+
 void
 blend_mode(image_t *dest, image_t *source, uint8_t (*pt2blend)(uint8_t, uint8_t))
 {
@@ -37,7 +40,7 @@ xor(uint8_t bottom, uint8_t top)
 uint8_t
 overlay(uint8_t bottom, uint8_t top)
 {
-    if (bottom < 128)
+    if (top < 128)
         return (2*top*bottom/255);
     else
         return (255-2*(255-top)*(255-bottom)/255);
@@ -123,4 +126,13 @@ soft_light(uint8_t bottom, uint8_t top)
         return multiply(bottom, top + 128);
     else
         return 255 - multiply(255 - bottom, 255 - (top - 128));
+}
+
+uint8_t
+pin_light(uint8_t bottom, uint8_t top)
+{
+    if (top < 128)
+        return MAX(bottom, 2*(top-128));
+    else
+        return MIN(bottom, 2*top);
 }

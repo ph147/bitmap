@@ -431,10 +431,11 @@ main()
     read_data(infile, &header, &dib, &layer1);
 
     duplicate_layer(&layer2, layer1);
-    gaussian_blur(layer1);
-    //filter(layer2, pixel_bw);
-    //blend_mode(layer2, layer1, soft_light);
-    //combine(layer1, layer2, 0.6);
+    filter(layer2, pixel_bw);
+    filter(layer2, pixel_invert);
+    gaussian_blur(layer2);
+    blend_mode(layer2, layer1, overlay);
+    combine(layer1, layer2, 1.0);
 
     write_data(outfile, &header, &dib, &layer1);
 
