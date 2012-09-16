@@ -3,8 +3,9 @@
 #include <stdlib.h>
 #include <math.h>
 #include "bitmap.h"
+#include "blend.h"
 
-#define INPUT "test.bmp"
+#define INPUT "original.bmp"
 #define OUTPUT "output.bmp"
 
 static void
@@ -383,7 +384,7 @@ duplicate_layer(image_t **dest, image_t *source)
 }
 
 static void
-overlay(image_t *dest, image_t *source, float opacity)
+combine(image_t *dest, image_t *source, float opacity)
 {
     size_t i, j;
 
@@ -397,22 +398,6 @@ overlay(image_t *dest, image_t *source, float opacity)
                 (int)((source->matrix[i][j].green-dest->matrix[i][j].green)*opacity);
             dest->matrix[i][j].blue +=
                 (int)((source->matrix[i][j].blue-dest->matrix[i][j].blue)*opacity);
-        }
-    }
-}
-
-static void
-xor_images(image_t *dest, image_t *source)
-{
-    size_t i, j;
-
-    for (i = 0; i < source->height; ++i)
-    {
-        for (j = 0; j < source->width; ++j)
-        {
-            dest->matrix[i][j].red ^= source->matrix[i][j].red;
-            dest->matrix[i][j].green ^= source->matrix[i][j].green;
-            dest->matrix[i][j].blue ^= source->matrix[i][j].blue;
         }
     }
 }
@@ -433,8 +418,9 @@ main()
 
     duplicate_layer(&layer2, layer1);
     gaussian_blur(layer2);
-    overlay(layer1, layer2, 0.5);
-    filter(layer1, pixel_red);
+    //filter(layer2, pixel_bw);
+    blend_mode(layer2, layer1, color_dodge);
+    combine(layer1, layer2, 0.6);
 
     write_data(outfile, &header, &dib, &layer1);
 

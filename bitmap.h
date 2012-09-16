@@ -62,7 +62,5 @@ static void write_data(FILE *out, file_header_t *header, dib_header_t *dib, imag
 static void edit_pixels(image_t *img);
 static void gaussian_blur(image_t *img);
 static void duplicate_layer(image_t **dest, image_t *source);
-static void overlay(image_t *dest, image_t *source, float opacity);
-static void xor_images(image_t *dest, image_t *source);
 
 #endif
