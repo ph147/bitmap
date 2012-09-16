@@ -272,12 +272,17 @@ read_data(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img)
 static void
 write_data(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
 {
-    size_t col, row;
-    int width = dib->width;
-    int height = dib->height;
-    size_t size = sizeof(pixel_24bit_t);
-    size_t rem;
     pixel_24bit_t pixel;
+    size_t width, height;
+    size_t col, row;
+    size_t rem;
+    size_t size = sizeof(pixel_24bit_t);
+
+    dib->width = (*img)->width;
+    dib->height = (*img)->height;
+
+    width = dib->width;
+    height = dib->height;
 
     fwrite(header, sizeof(*header), 1, out);
     fwrite(dib, sizeof(*dib), 1, out);
@@ -416,6 +421,73 @@ combine(image_t *dest, image_t *source, float opacity)
     }
 }
 
+static void
+scale(image_t *dest, image_t *source, float factor)
+{
+    size_t i, j;
+
+    for (i = 0; i < source->height; ++i)
+    {
+        for (j = 0; j < source->width; ++j)
+        {
+            dest->matrix[(int)(i*factor)][(int)(j*factor)] = source->matrix[i][j];
+        }
+    }
+}
+
+static void
+rotate_180(image_t *img)
+{
+    size_t i, j;
+    image_t *tmp;
+
+    duplicate_layer(&tmp, img);
+
+    for (i = 0; i < img->height; ++i)
+    {
+        for (j = 0; j < img->width; ++j)
+        {
+            img->matrix[i][j] = tmp->matrix[img->height-i-1][img->width-j-1];
+        }
+    }
+
+    free_image(&tmp);
+}
+
+static void
+rotate_90(image_t **img)
+{
+    size_t i, j;
+    image_t *dupl;
+    image_t *ret;
+    image_t *tmp;
+
+    duplicate_layer(&dupl, *img);
+    init_image(&ret, dupl->height, dupl->width);
+
+    for (i = 0; i < dupl->width; ++i)
+    {
+        for (j = 0; j < dupl->height; ++j)
+        {
+            ret->matrix[i][j] = dupl->matrix[j][dupl->width-i-1];
+        }
+    }
+
+    tmp = *img;
+    *img = ret;
+    free_image(&tmp);
+
+    free_image(&dupl);
+}
+
+static void
+rotate_270(image_t **img)
+{
+    size_t i;
+    for (i = 0; i < 3; ++i)
+        rotate_90(img);
+}
+
 int
 main()
 {
@@ -431,13 +503,15 @@ main()
     read_data(infile, &header, &dib, &layer1);
 
     duplicate_layer(&layer2, layer1);
+    gaussian_blur(layer2);
     filter(layer2, pixel_bw);
     filter(layer2, pixel_invert);
     gaussian_blur(layer2);
     blend_mode(layer2, layer1, overlay);
-    combine(layer1, layer2, 1.0);
+    //combine(layer1, layer2, 0.6);
+    rotate_90(&layer2);
 
-    write_data(outfile, &header, &dib, &layer1);
+    write_data(outfile, &header, &dib, &layer2);
 
     free_image(&layer1);
     free_image(&layer2);
