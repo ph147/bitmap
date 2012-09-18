@@ -3,14 +3,44 @@
 #include <stdlib.h>
 #include <time.h>
 #include "bitmap.h"
+#include "llist.h"
 #include "blend.h"
 
-// TODO layer_t → layer_t's, opacity → write_data → auto combine
+// TODO image_t → layer_t's, opacity → write_data → auto combine
+// TODO does layer exist?
+// TODO is 1st layer at top or bottom?
 
 #define DEBUG printf
 
 #define INPUT "lenna.bmp"
 #define OUTPUT "Lenna.bmp"
+
+static image_t
+*new_image(uint32_t width, uint32_t height)
+{
+    image_t *ret = malloc(sizeof(image_t));
+    ret->layers = new_list();
+    ret->width = width;
+    ret->height = width;
+
+    // TODO
+    ret->header = NULL;
+    ret->dib = NULL;
+    return ret;
+}
+
+layer_t *layer(image_t *img, size_t n)
+{
+    size_t i;
+    node *tmp = img->layers->head;
+    for (i = 0; i < n-1; ++i)
+    {
+        if (tmp == NULL)
+            return NULL;
+        tmp = tmp->next;
+    }
+    return tmp == NULL ? NULL : tmp->value;
+}
 
 static void
 init_layer(layer_t **layer, uint32_t width, uint32_t height)
@@ -264,24 +294,39 @@ read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, layer_t **layer)
     }
 }
 
-static void
-read_data(FILE *in, file_header_t *header, dib_header_t *dib, layer_t **layer)
+static image_t
+*read_data(FILE *in) //, file_header_t *header, dib_header_t *dib, layer_t **layer)
 {
+    image_t *ret;
+    file_header_t *header = malloc(sizeof(file_header_t));
+    dib_header_t *dib = malloc(sizeof(dib_header_t));
+    layer_t *layer;
+
     read_headers(in, header, dib);
-    read_pixels(in, header, dib, layer);
+    read_pixels(in, header, dib, &layer);
+
+    ret = new_image(dib->width, dib->height);
+    ret->header = header;
+    ret->dib = dib;
+    add_node(ret->layers, layer);
+    return ret;
 }
 
 static void
-write_data(FILE *out, file_header_t *header, dib_header_t *dib, layer_t **layer)
+write_data(FILE *out, image_t *img) //, file_header_t *header, dib_header_t *dib, layer_t **layer)
 {
     pixel_24bit_t pixel;
     size_t width, height;
     size_t col, row;
     size_t rem;
     size_t size = sizeof(pixel_24bit_t);
+    dib_header_t *dib = img->dib;
+    file_header_t *header = img->header;
+    // TODO combine layers
+    layer_t *layer = img->layers->head->value;
 
-    dib->width = (*layer)->width;
-    dib->height = (*layer)->height;
+    dib->width = layer->width;
+    dib->height = layer->height;
 
     width = dib->width;
     height = dib->height;
@@ -293,10 +338,10 @@ write_data(FILE *out, file_header_t *header, dib_header_t *dib, layer_t **layer)
     for (row = 0; row < height; ++row)
     {
         for (col = 0; col < width; ++col)
-            fwrite(&((*layer)->matrix[row][col]), sizeof(pixel_24bit_t), 1, out);
+            fwrite(&(layer->matrix[row][col]), sizeof(pixel_24bit_t), 1, out);
         rem = (width*size) % 4;
         if (rem)
-            fwrite(&((*layer)->matrix[row][col]), 4-rem, 1, out);
+            fwrite(&(layer->matrix[row][col]), 4-rem, 1, out);
     }
 }
 
@@ -576,9 +621,15 @@ main()
     file_header_t header;
     dib_header_t dib;
 
+    image_t *img = read_data(infile);
+    //duplicate_layer(img, layer(img, 1));
+    gaussian_blur(layer(img, 1));
+
+    /*
     layer_t *layer1;
     layer_t *layer2;
 
+    // TODO read from/to layer or image?
     read_data(infile, &header, &dib, &layer1);
 
     //filter(layer1, pixel_bw);
@@ -586,7 +637,6 @@ main()
     noise(layer2);
     gaussian_blur(layer2);
     blend_mode(layer2, layer1, overlay);
-    /*
     sharpen(layer1);
     duplicate_layer(&layer2, layer1);
     gaussian_blur(layer2);
@@ -597,12 +647,15 @@ main()
     filter(layer1, pixel_bw);
     filter(layer1, pixel_invert);
     //rotate_90(&layer1);
+
     */
+    //write_data(outfile, &header, &dib, &(img->layers->head->value));
+    write_data(outfile, img);
 
-    write_data(outfile, &header, &dib, &layer2);
-
+    /*
     free_layer(&layer1);
     free_layer(&layer2);
+    */
 
     fclose(infile);
     fclose(outfile);
