@@ -4,7 +4,7 @@
 #include <inttypes.h>
 #include "bitmap.h"
 
-void blend_mode(image_t *dest, image_t *source, uint8_t (*pt2blend)(uint8_t, uint8_t));
+void blend_mode(layer_t *dest, layer_t *source, uint8_t (*pt2blend)(uint8_t, uint8_t));
 uint8_t xor(uint8_t bottom, uint8_t top);
 uint8_t overlay(uint8_t bottom, uint8_t top);
 uint8_t screen(uint8_t bottom, uint8_t top);

@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <stdlib.h>
-#include <math.h>
+#include <time.h>
 #include "bitmap.h"
 #include "blend.h"
+
+// TODO layer_t → layer_t's, opacity → write_data → auto combine
 
 #define DEBUG printf
 
@@ -11,27 +13,27 @@
 #define OUTPUT "Lenna.bmp"
 
 static void
-init_image(image_t **image, uint32_t width, uint32_t height)
+init_layer(layer_t **layer, uint32_t width, uint32_t height)
 {
     size_t i;
 
-    *image = malloc(sizeof(image_t));
-    (*image)->matrix = (pixel_24bit_t **) malloc(height*sizeof(pixel_24bit_t *));
+    *layer = malloc(sizeof(layer_t));
+    (*layer)->matrix = (pixel_24bit_t **) malloc(height*sizeof(pixel_24bit_t *));
     for (i = 0; i < height; ++i)
-        (*image)->matrix[i] = (pixel_24bit_t *) malloc(width*sizeof(pixel_24bit_t));
+        (*layer)->matrix[i] = (pixel_24bit_t *) malloc(width*sizeof(pixel_24bit_t));
 
-    (*image)->height = height;
-    (*image)->width = width;
+    (*layer)->height = height;
+    (*layer)->width = width;
 }
 
 static void
-free_image(image_t **image)
+free_layer(layer_t **layer)
 {
     size_t i;
-    for (i = 0; i < (*image)->height; ++i)
-        free((*image)->matrix[i]);
-    free((*image)->matrix);
-    free(*image);
+    for (i = 0; i < (*layer)->height; ++i)
+        free((*layer)->matrix[i]);
+    free((*layer)->matrix);
+    free(*layer);
 }
 
 static void
@@ -239,7 +241,7 @@ pixel_test(pixel_24bit_t *pixel)
 }
 
 static void
-read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img)
+read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, layer_t **layer)
 {
     size_t col, row;
     int width = dib->width;
@@ -248,29 +250,29 @@ read_pixels(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img)
     size_t rem;
     pixel_24bit_t pixel;
 
-    init_image(img, dib->width, dib->height);
+    init_layer(layer, dib->width, dib->height);
 
     fseek(in, header->offset, SEEK_SET);
 
     for (row = 0; row < height; ++row)
     {
         for (col = 0; col < width; ++col)
-            fread(&((*img)->matrix[row][col]), sizeof(pixel_24bit_t), 1, in);
+            fread(&((*layer)->matrix[row][col]), sizeof(pixel_24bit_t), 1, in);
         rem = (width*size) % 4;
         if (rem)
-            fread(&((*img)->matrix[row][col]), 4-rem, 1, in);
+            fread(&((*layer)->matrix[row][col]), 4-rem, 1, in);
     }
 }
 
 static void
-read_data(FILE *in, file_header_t *header, dib_header_t *dib, image_t **img)
+read_data(FILE *in, file_header_t *header, dib_header_t *dib, layer_t **layer)
 {
     read_headers(in, header, dib);
-    read_pixels(in, header, dib, img);
+    read_pixels(in, header, dib, layer);
 }
 
 static void
-write_data(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
+write_data(FILE *out, file_header_t *header, dib_header_t *dib, layer_t **layer)
 {
     pixel_24bit_t pixel;
     size_t width, height;
@@ -278,8 +280,8 @@ write_data(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
     size_t rem;
     size_t size = sizeof(pixel_24bit_t);
 
-    dib->width = (*img)->width;
-    dib->height = (*img)->height;
+    dib->width = (*layer)->width;
+    dib->height = (*layer)->height;
 
     width = dib->width;
     height = dib->height;
@@ -291,54 +293,46 @@ write_data(FILE *out, file_header_t *header, dib_header_t *dib, image_t **img)
     for (row = 0; row < height; ++row)
     {
         for (col = 0; col < width; ++col)
-            fwrite(&((*img)->matrix[row][col]), sizeof(pixel_24bit_t), 1, out);
+            fwrite(&((*layer)->matrix[row][col]), sizeof(pixel_24bit_t), 1, out);
         rem = (width*size) % 4;
         if (rem)
-            fwrite(&((*img)->matrix[row][col]), 4-rem, 1, out);
+            fwrite(&((*layer)->matrix[row][col]), 4-rem, 1, out);
     }
 }
 
 static void
-filter(image_t *img, void (*pt2filter)(pixel_24bit_t *))
+filter(layer_t *layer, void (*pt2filter)(pixel_24bit_t *))
 {
     size_t i, j;
-    for (i = 0; i < img->height; ++i)
-    {
-        for (j = 0; j < img->width; ++j)
-        {
-            pt2filter(&(img->matrix[i][j]));
-        }
-    }
+    for (i = 0; i < layer->height; ++i)
+        for (j = 0; j < layer->width; ++j)
+            pt2filter(&(layer->matrix[i][j]));
 }
 
 static void
-edit_pixels(image_t *img)
+edit_pixels(layer_t *layer)
 {
     size_t i, j;
-    for (i = 0; i < img->height; ++i)
-    {
-        for (j = 0; j < img->width; ++j)
-        {
-            pixel_2001(&(img->matrix[i][j]));
-        }
-    }
+    for (i = 0; i < layer->height; ++i)
+        for (j = 0; j < layer->width; ++j)
+            pixel_2001(&(layer->matrix[i][j]));
 }
 
 static void
-gaussian_blur(image_t *img)
+gaussian_blur(layer_t *layer)
 {
     //const float gauss[] = { 0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006 };
     const float gauss[] = { 0.0089, 0.0123, 0.0165, 0.0215, 0.0273, 0.0336, 0.0403, 0.0469, 0.0532, 0.0586, 0.0628, 0.0655, 0.0664, 0.0655, 0.0628, 0.0586, 0.0532, 0.0469, 0.0403, 0.0336, 0.0273, 0.0215, 0.0165, 0.0123, 0.0089 };
     size_t len = sizeof(gauss)/sizeof(float);
     size_t i, j, k, offset;
     pixel_24bit_t sum;
-    image_t *tmp;
+    layer_t *tmp;
 
-    init_image(&tmp, img->width, img->height);
+    init_layer(&tmp, layer->width, layer->height);
 
-    for (i = 0; i < img->height; ++i)
+    for (i = 0; i < layer->height; ++i)
     {
-        for (j = 0; j < img->width; ++j)
+        for (j = 0; j < layer->width; ++j)
         {
             sum.red = sum.blue = sum.green = 0;
             /* Only advance one pixel every second cycle
@@ -346,56 +340,151 @@ gaussian_blur(image_t *img)
              * of gaussian blur. */
             if (j < len)
                 offset = -(int)j/2;
-            if (j > img->width - len)
-                offset = (int)(-j+img->width-2*len)/2;
+            if (j > layer->width - len)
+                offset = (int)(-j+layer->width-2*len)/2;
 
             for (k = 0; k < len; ++k)
             {
-                sum.red += gauss[k]*img->matrix[i][j+k+offset].red;
-                sum.blue += gauss[k]*img->matrix[i][j+k+offset].blue;
-                sum.green += gauss[k]*img->matrix[i][j+k+offset].green;
+                sum.red += gauss[k]*layer->matrix[i][j+k+offset].red;
+                sum.blue += gauss[k]*layer->matrix[i][j+k+offset].blue;
+                sum.green += gauss[k]*layer->matrix[i][j+k+offset].green;
             }
             tmp->matrix[i][j].red = sum.red;
             tmp->matrix[i][j].green = sum.green;
             tmp->matrix[i][j].blue = sum.blue;
         }
     }
-    for (i = 0; i < img->height; ++i)
-        for (j = 0; j < img->width; ++j)
-            img->matrix[i][j] = tmp->matrix[i][j];
-    for (i = 0; i < img->width; ++i)
+    for (i = 0; i < layer->height; ++i)
+        for (j = 0; j < layer->width; ++j)
+            layer->matrix[i][j] = tmp->matrix[i][j];
+    for (i = 0; i < layer->width; ++i)
     {
-        for (j = 0; j < img->height; ++j)
+        for (j = 0; j < layer->height; ++j)
         {
             if (j < len)
                 offset = -(int)j/2;
-            if (j > img->height - len)
-                offset = (int)(-j+img->height-2*len)/2;
+            if (j > layer->height - len)
+                offset = (int)(-j+layer->height-2*len)/2;
             sum.red = sum.blue = sum.green = 0;
             for (k = 0; k < len; ++k)
             {
-                sum.red += gauss[k]*img->matrix[j+k+offset][i].red;
-                sum.blue += gauss[k]*img->matrix[j+k+offset][i].blue;
-                sum.green += gauss[k]*img->matrix[j+k+offset][i].green;
+                sum.red += gauss[k]*layer->matrix[j+k+offset][i].red;
+                sum.blue += gauss[k]*layer->matrix[j+k+offset][i].blue;
+                sum.green += gauss[k]*layer->matrix[j+k+offset][i].green;
             }
             tmp->matrix[j][i].red = sum.red;
             tmp->matrix[j][i].green = sum.green;
             tmp->matrix[j][i].blue = sum.blue;
         }
     }
-    for (i = 0; i < img->height; ++i)
-        for (j = 0; j < img->width; ++j)
-            img->matrix[i][j] = tmp->matrix[i][j];
+    for (i = 0; i < layer->height; ++i)
+        for (j = 0; j < layer->width; ++j)
+            layer->matrix[i][j] = tmp->matrix[i][j];
 
-    free_image(&tmp);
+    free_layer(&tmp);
 }
 
 static void
-duplicate_layer(image_t **dest, image_t *source)
+pixel_max(pixel_t *cur, pixel_t *new)
+{
+    if (new->red > cur->red)
+        cur->red = new->red;
+    if (new->blue > cur->blue)
+        cur->blue = new->blue;
+    if (new->green > cur->green)
+        cur->green = new->green;
+}
+
+static void
+pixel_min(pixel_t *cur, pixel_t *new)
+{
+    if (new->red < cur->red)
+        cur->red = new->red;
+    if (new->blue < cur->blue)
+        cur->blue = new->blue;
+    if (new->green < cur->green)
+        cur->green = new->green;
+}
+
+static void
+sharpen(layer_t *layer)
+{
+    const float sharp[3][3] = {
+        { -0.0625, -0.125, -0.0625 },
+        {  -0.125,    1.0,  -0.125 },
+        { -0.0625, -0.125, -0.0625 }
+    };
+    size_t i, j, k, l;
+    pixel_t sum;
+    pixel_t min = {0, 0, 0};
+    pixel_t max = {0, 0, 0};
+    layer_t *tmp;
+
+    init_layer(&tmp, layer->width, layer->height);
+
+    for (i = 0; i < layer->height-3; ++i)
+    {
+        for (j = 0; j < layer->width-3; ++j)
+        {
+            sum.red = sum.blue = sum.green = 0;
+            for (k = 0; k < 3; ++k)
+            {
+                for (l = 0; l < 3; ++l)
+                {
+                    sum.red += sharp[k][l]*layer->matrix[i+k][j+l].red;
+                    sum.blue += sharp[k][l]*layer->matrix[i+k][j+l].blue;
+                    sum.green += sharp[k][l]*layer->matrix[i+k][j+l].green;
+                }
+            }
+            pixel_max(&max, &sum);
+            pixel_min(&min, &sum);
+            tmp->matrix[i][j].red = (uint8_t) (sum.red+80)*0.2;
+            tmp->matrix[i][j].blue = (uint8_t) (sum.blue+80)*0.2;
+            tmp->matrix[i][j].green = (uint8_t) (sum.green+80)*0.2;
+        }
+    }
+    printf("min: %d, %d, %d\n", min.red, min.green, min.blue);
+    printf("max %d, %d, %d\n", max.red, max.green, max.blue);
+
+    for (i = 0; i < layer->height; ++i)
+    {
+        for (j = 0; j < layer->width; ++j)
+        {
+            layer->matrix[i][j].red += tmp->matrix[i][j].red;
+            layer->matrix[i][j].blue += tmp->matrix[i][j].blue;
+            layer->matrix[i][j].green += tmp->matrix[i][j].green;
+        }
+    }
+
+    free_layer(&tmp);
+}
+
+static void
+noise(layer_t *layer)
+{
+    size_t i, j;
+    uint8_t value;
+
+    srand(time(NULL));
+
+    for (i = 0; i < layer->height; ++i)
+    {
+        for (j = 0; j < layer->width; ++j)
+        {
+            value = (rand()%2) * 255;
+            layer->matrix[i][j].red = value;
+            layer->matrix[i][j].blue = value;
+            layer->matrix[i][j].green = value;
+        }
+    }
+}
+
+static void
+duplicate_layer(layer_t **dest, layer_t *source)
 {
     size_t i, j;
 
-    init_image(dest, source->width, source->height);
+    init_layer(dest, source->width, source->height);
 
     for (i = 0; i < source->height; ++i)
         for (j = 0; j < source->width; ++j)
@@ -403,13 +492,15 @@ duplicate_layer(image_t **dest, image_t *source)
 }
 
 static void
-combine(image_t *dest, image_t *source, float opacity)
+combine(layer_t *dest, layer_t *source, float opacity)
 {
     size_t i, j;
+    size_t height = MIN(source->height, dest->height);
+    size_t width = MIN(source->width, dest->width);
 
-    for (i = 0; i < source->height; ++i)
+    for (i = 0; i < height; ++i)
     {
-        for (j = 0; j < source->width; ++j)
+        for (j = 0; j < width; ++j)
         {
             dest->matrix[i][j].red +=
                 (int)((source->matrix[i][j].red-dest->matrix[i][j].red)*opacity);
@@ -422,70 +513,58 @@ combine(image_t *dest, image_t *source, float opacity)
 }
 
 static void
-scale(image_t *dest, image_t *source, float factor)
+scale(layer_t *dest, layer_t *source, float factor)
 {
     size_t i, j;
 
     for (i = 0; i < source->height; ++i)
-    {
         for (j = 0; j < source->width; ++j)
-        {
             dest->matrix[(int)(i*factor)][(int)(j*factor)] = source->matrix[i][j];
-        }
-    }
 }
 
 static void
-rotate_180(image_t *img)
+rotate_180(layer_t *layer)
 {
     size_t i, j;
-    image_t *tmp;
+    layer_t *tmp;
 
-    duplicate_layer(&tmp, img);
+    duplicate_layer(&tmp, layer);
 
-    for (i = 0; i < img->height; ++i)
-    {
-        for (j = 0; j < img->width; ++j)
-        {
-            img->matrix[i][j] = tmp->matrix[img->height-i-1][img->width-j-1];
-        }
-    }
+    for (i = 0; i < layer->height; ++i)
+        for (j = 0; j < layer->width; ++j)
+            layer->matrix[i][j] = tmp->matrix[layer->height-i-1][layer->width-j-1];
 
-    free_image(&tmp);
+    free_layer(&tmp);
 }
 
 static void
-rotate_90(image_t **img)
+rotate_90(layer_t **layer)
 {
     size_t i, j;
-    image_t *dupl;
-    image_t *ret;
-    image_t *tmp;
+    layer_t *dupl;
+    layer_t *ret;
+    layer_t *tmp;
 
-    duplicate_layer(&dupl, *img);
-    init_image(&ret, dupl->height, dupl->width);
+    duplicate_layer(&dupl, *layer);
+    init_layer(&ret, dupl->height, dupl->width);
 
     for (i = 0; i < dupl->width; ++i)
-    {
         for (j = 0; j < dupl->height; ++j)
-        {
             ret->matrix[i][j] = dupl->matrix[j][dupl->width-i-1];
-        }
-    }
 
-    tmp = *img;
-    *img = ret;
-    free_image(&tmp);
+    tmp = *layer;
+    *layer = ret;
+    free_layer(&tmp);
 
-    free_image(&dupl);
+    free_layer(&dupl);
 }
 
 static void
-rotate_270(image_t **img)
+rotate_270(layer_t **layer)
 {
     size_t i;
     for (i = 0; i < 3; ++i)
-        rotate_90(img);
+        rotate_90(layer);
 }
 
 int
@@ -497,24 +576,33 @@ main()
     file_header_t header;
     dib_header_t dib;
 
-    image_t *layer1;
-    image_t *layer2;
+    layer_t *layer1;
+    layer_t *layer2;
 
     read_data(infile, &header, &dib, &layer1);
 
+    //filter(layer1, pixel_bw);
     duplicate_layer(&layer2, layer1);
-    gaussian_blur(layer2);
-    filter(layer2, pixel_bw);
-    filter(layer2, pixel_invert);
+    noise(layer2);
     gaussian_blur(layer2);
     blend_mode(layer2, layer1, overlay);
-    //combine(layer1, layer2, 0.6);
-    rotate_90(&layer2);
+    /*
+    sharpen(layer1);
+    duplicate_layer(&layer2, layer1);
+    gaussian_blur(layer2);
+    //filter(layer2, pixel_bw);
+    //filter(layer2, pixel_invert);
+    blend_mode(layer2, layer1, soft_light);
+    combine(layer1, layer2, 0.6);
+    filter(layer1, pixel_bw);
+    filter(layer1, pixel_invert);
+    //rotate_90(&layer1);
+    */
 
     write_data(outfile, &header, &dib, &layer2);
 
-    free_image(&layer1);
-    free_image(&layer2);
+    free_layer(&layer1);
+    free_layer(&layer2);
 
     fclose(infile);
     fclose(outfile);

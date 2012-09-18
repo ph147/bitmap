@@ -13,13 +13,15 @@
 #define MIN(a,b) (a)<(b)?(a):(b)
 
 void
-blend_mode(image_t *dest, image_t *source, uint8_t (*pt2blend)(uint8_t, uint8_t))
+blend_mode(layer_t *dest, layer_t *source, uint8_t (*pt2blend)(uint8_t, uint8_t))
 {
     size_t i, j;
+    size_t height = MIN(source->height, dest->height);
+    size_t width = MIN(source->width, dest->width);
 
-    for (i = 0; i < source->height; ++i)
+    for (i = 0; i < height; ++i)
     {
-        for (j = 0; j < source->width; ++j)
+        for (j = 0; j < width; ++j)
         {
             dest->matrix[i][j].red = pt2blend(dest->matrix[i][j].red,
                     source->matrix[i][j].red);
